@@ -12,12 +12,14 @@ import matplotlib.pyplot as plt
 from skimage.transform import resize
 from skimage.transform import downscale_local_mean
 from pyboy import PyBoy
+#from pyboy.logger import log_level
 import hnswlib
 import mediapy as media
 import pandas as pd
 
 from gymnasium import Env, spaces
 from pyboy.utils import WindowEvent
+from memory_addresses import *
 
 class RedGymEnv(Env):
 
@@ -98,6 +100,7 @@ class RedGymEnv(Env):
 
         head = 'headless' if config['headless'] else 'SDL2'
 
+        #log_level("ERROR")
         self.pyboy = PyBoy(
                 config['gb_path'],
                 debugging=False,
@@ -113,7 +116,7 @@ class RedGymEnv(Env):
             
         self.reset()
 
-    def reset(self, seed=None):
+    def reset(self, seed=None, options=None):
         self.seed = seed
         # restart game, skipping credits
         with open(self.init_state, "rb") as f:
@@ -151,6 +154,7 @@ class RedGymEnv(Env):
         self.last_health = 1
         self.total_healing_rew = 0
         self.died_count = 0
+        self.party_size = 0
         self.step_count = 0
         self.progress_reward = self.get_game_state_reward()
         self.total_reward = sum([val for _, val in self.progress_reward.items()])
@@ -207,6 +211,7 @@ class RedGymEnv(Env):
             self.update_seen_coords()
             
         self.update_heal_reward()
+        self.party_size = self.read_m(PARTY_SIZE_ADDRESS)
 
         new_reward, new_prog = self.update_reward()
         
@@ -256,18 +261,22 @@ class RedGymEnv(Env):
         self.model_frame_writer.add_image(self.render(reduce_res=True, update_mem=False))
     
     def append_agent_stats(self, action):
-        x_pos = self.read_m(0xD362)
-        y_pos = self.read_m(0xD361)
-        map_n = self.read_m(0xD35E)
-        levels = [self.read_m(a) for a in [0xD18C, 0xD1B8, 0xD1E4, 0xD210, 0xD23C, 0xD268]]
+        x_pos = self.read_m(X_POS_ADDRESS)
+        y_pos = self.read_m(Y_POS_ADDRESS)
+        map_n = self.read_m(MAP_N_ADDRESS)
+        levels = [self.read_m(a) for a in LEVELS_ADDRESSES]
         if self.use_screen_explore:
             expl = ('frames', self.knn_index.get_current_count())
         else:
             expl = ('coord_count', len(self.seen_coords))
         self.agent_stats.append({
             'step': self.step_count, 'x': x_pos, 'y': y_pos, 'map': map_n,
+            'map_location': self.get_map_location(map_n),
             'last_action': action,
-            'pcount': self.read_m(0xD163), 'levels': levels, 'ptypes': self.read_party(),
+            'pcount': self.read_m(PARTY_SIZE_ADDRESS), 
+            'levels': levels, 
+            'levels_sum': sum(levels),
+            'ptypes': self.read_party(),
             'hp': self.read_hp_fraction(),
             expl[0]: expl[1],
             'deaths': self.died_count, 'badge': self.get_badges(),
@@ -296,9 +305,9 @@ class RedGymEnv(Env):
                 )
     
     def update_seen_coords(self):
-        x_pos = self.read_m(0xD362)
-        y_pos = self.read_m(0xD361)
-        map_n = self.read_m(0xD35E)
+        x_pos = self.read_m(X_POS_ADDRESS)
+        y_pos = self.read_m(Y_POS_ADDRESS)
+        map_n = self.read_m(MAP_N_ADDRESS)
         coord_string = f"x:{x_pos} y:{y_pos} m:{map_n}"
         if self.get_levels_sum() >= 22 and not self.levels_satisfied:
             self.levels_satisfied = True
@@ -341,6 +350,10 @@ class RedGymEnv(Env):
         
         def make_reward_channel(r_val):
             col_steps = self.col_steps
+            max_r_val = (w-1) * h * col_steps
+            # truncate progress bar. if hitting this
+            # you should scale down the reward in group_rewards!
+            r_val = min(r_val, max_r_val)
             row = floor(r_val / (h * col_steps))
             memory = np.zeros(shape=(h, w), dtype=np.uint8)
             memory[:, :row] = 255
@@ -424,7 +437,7 @@ class RedGymEnv(Env):
         return bin(256 + self.read_m(addr))[-bit-1] == '1'
     
     def get_levels_sum(self):
-        poke_levels = [max(self.read_m(a) - 2, 0) for a in [0xD18C, 0xD1B8, 0xD1E4, 0xD210, 0xD23C, 0xD268]]
+        poke_levels = [max(self.read_m(a) - 2, 0) for a in LEVELS_ADDRESSES]
         return max(sum(poke_levels) - 4, 0) # subtract starting pokemon level
     
     def get_levels_reward(self):
@@ -448,14 +461,16 @@ class RedGymEnv(Env):
         return base + post
     
     def get_badges(self):
-        return self.bit_count(self.read_m(0xD356))
+        return self.bit_count(self.read_m(BADGE_COUNT_ADDRESS))
 
     def read_party(self):
-        return [self.read_m(addr) for addr in [0xD164, 0xD165, 0xD166, 0xD167, 0xD168, 0xD169]]
+        return [self.read_m(addr) for addr in PARTY_ADDRESSES]
     
     def update_heal_reward(self):
         cur_health = self.read_hp_fraction()
-        if cur_health > self.last_health:
+        # if health increased and party size did not change
+        if (cur_health > self.last_health and
+                self.read_m(PARTY_SIZE_ADDRESS) == self.party_size):
             if self.last_health > 0:
                 heal_amount = cur_health - self.last_health
                 if heal_amount > 0.5:
@@ -467,9 +482,9 @@ class RedGymEnv(Env):
                 
     def get_all_events_reward(self):
         # adds up all event flags, exclude museum ticket
-        event_flags_start = 0xD747
-        event_flags_end = 0xD886
-        museum_ticket = (0xD754, 0)
+        event_flags_start = EVENT_FLAGS_START_ADDRESS
+        event_flags_end = EVENT_FLAGS_END_ADDRESS
+        museum_ticket = (MUSEUM_TICKET_ADDRESS, 0)
         base_event_flags = 13
         return max(
             sum(
@@ -533,7 +548,7 @@ class RedGymEnv(Env):
     
     def update_max_op_level(self):
         #opponent_level = self.read_m(0xCFE8) - 5 # base level
-        opponent_level = max([self.read_m(a) for a in [0xD8C5, 0xD8F1, 0xD91D, 0xD949, 0xD975, 0xD9A1]]) - 5
+        opponent_level = max([self.read_m(a) for a in OPPONENT_LEVELS_ADDRESSES]) - 5
         #if opponent_level >= 7:
         #    self.save_screenshot('highlevelop')
         self.max_opponent_level = max(self.max_opponent_level, opponent_level)
@@ -545,8 +560,9 @@ class RedGymEnv(Env):
         return self.max_event_rew
 
     def read_hp_fraction(self):
-        hp_sum = sum([self.read_hp(add) for add in [0xD16C, 0xD198, 0xD1C4, 0xD1F0, 0xD21C, 0xD248]])
-        max_hp_sum = sum([self.read_hp(add) for add in [0xD18D, 0xD1B9, 0xD1E5, 0xD211, 0xD23D, 0xD269]])
+        hp_sum = sum([self.read_hp(add) for add in HP_ADDRESSES])
+        max_hp_sum = sum([self.read_hp(add) for add in MAX_HP_ADDRESSES])
+        max_hp_sum = max(max_hp_sum, 1)
         return hp_sum / max_hp_sum
 
     def read_hp(self, start):
@@ -563,6 +579,48 @@ class RedGymEnv(Env):
         return 10 * ((num >> 4) & 0x0f) + (num & 0x0f)
     
     def read_money(self):
-        return (100 * 100 * self.read_bcd(self.read_m(0xD347)) + 
-                100 * self.read_bcd(self.read_m(0xD348)) +
-                self.read_bcd(self.read_m(0xD349)))
+        return (100 * 100 * self.read_bcd(self.read_m(MONEY_ADDRESS_1)) + 
+                100 * self.read_bcd(self.read_m(MONEY_ADDRESS_2)) +
+                self.read_bcd(self.read_m(MONEY_ADDRESS_3)))
+
+    def get_map_location(self, map_idx):
+        map_locations = {
+            0: "Pallet Town",
+            1: "Viridian City",
+            2: "Pewter City",
+            3: "Cerulean City",
+            12: "Route 1",
+            13: "Route 2",
+            14: "Route 3",
+            15: "Route 4",
+            33: "Route 22",
+            37: "Red house first",
+            38: "Red house second",
+            39: "Blues house",
+            40: "oaks lab",
+            41: "Pokémon Center (Viridian City)",
+            42: "Poké Mart (Viridian City)",
+            43: "School (Viridian City)",
+            44: "House 1 (Viridian City)",
+            47: "Gate (Viridian City/Pewter City) (Route 2)",
+            49: "Gate (Route 2)",
+            50: "Gate (Route 2/Viridian Forest) (Route 2)",
+            51: "viridian forest",
+            52: "Pewter Museum (floor 1)",
+            53: "Pewter Museum (floor 2)",
+            54: "Pokémon Gym (Pewter City)",
+            55: "House with disobedient Nidoran♂ (Pewter City)",
+            56: "Poké Mart (Pewter City)",
+            57: "House with two Trainers (Pewter City)",
+            58: "Pokémon Center (Pewter City)",
+            59: "Mt. Moon (Route 3 entrance)",
+            60: "Mt. Moon",
+            61: "Mt. Moon",
+            68: "Pokémon Center (Route 4)",
+            193: "Badges check gate (Route 22)"
+        }
+        if map_idx in map_locations.keys():
+            return map_locations[map_idx]
+        else:
+            return "Unknown Location"
+    
