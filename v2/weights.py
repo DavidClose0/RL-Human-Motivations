@@ -1,9 +1,75 @@
-acrobat = [0.25, 0.42, 0.49, 0.40, 0.42, 0.22, 0.48, 0.59, 0.11, 0.09, 0.51, 0.13]
-gardener = [0.43, 0.42, 0.31, 0.23, 0.52, 0.37, 0.10, 0.31, 0.20, 0.23, 0.13, 0.37]
-slayer = [0.35, 0.26, 0.28, 0.50, 0.23, 0.17, 0.27, 0.14, 0.62, 0.58, 0.18, 0.14]
-skirmisher = [0.71, 0.78, 0.62, 0.78, 0.27, 0.66, 0.37, 0.39, 0.30, 0.12, 0.37, 0.37]
-gladiator = [0.76, 0.76, 0.75, 0.69, 0.78, 0.74, 0.68, 0.79, 0.61, 0.62, 0.66, 0.63]
-ninja = [0.56, 0.82, 0.74, 0.50, 0.22, 0.49, 0.69, 0.76, 0.27, 0.43, 0.15, 0.22]
-bounty_hunter = [0.24, 0.28, 0.61, 0.75, 0.45, 0.61, 0.28, 0.31, 0.70, 0.63, 0.61, 0.62]
-architect = [0.20, 0.23, 0.15, 0.23, 0.59, 0.52, 0.63, 0.35, 0.59, 0.59, 0.51, 0.51]
-bard = [0.68, 0.37, 0.35, 0.34, 0.26, 0.18, 0.52, 0.32, 0.67, 0.62, 0.66, 0.69]
+import csv
+from enum import Enum
+
+def load_weights_from_csv(csv_file_path, enum_name):
+    """
+    Loads weight matrix and creates an enum for labels.
+    :param csv_file_path: (str) path to csv file
+    :param enum_name: (str) name for enum
+    :returns: (Enum, list of lists) label enum, weight matrix
+    """
+    enum_members = {}
+    weight_matrix = []
+
+    with open(csv_file_path, 'r') as csvfile:
+        csv_reader = csv.reader(csvfile)
+        header = next(csv_reader)  # Skip header row
+        enum_counter = 0
+
+        for row in csv_reader:
+            label = row[0]
+            enum_members[label] = enum_counter
+            enum_counter += 1
+
+            weights = []
+            for i in range(1, len(row)):
+                value = row[i]
+                weights.append(float(value))
+            weight_matrix.append(weights)
+
+    ActionEnum = Enum(enum_name, enum_members)
+    return ActionEnum, weight_matrix
+
+# Reward weights for each action by motivation
+Action, action_weights = load_weights_from_csv("action_weights.csv", "Action")
+
+# Reward weights for each gamer type by motivation
+GamerType, gamer_type_weights = load_weights_from_csv("gamer_type_weights.csv", "GamerType")
+
+# Reward weights for each action by gamer type
+weights = [[0] * len(GamerType) for _ in range(len(Action))]
+
+# Calculate weights using weighted average
+for i in range(len(weights)):
+    for j in range(len(weights[i])):
+        total = 0
+        count = 0
+        for k in range(12):
+            if (action_weights[i][k] != 0):
+                total += action_weights[i][k] * gamer_type_weights[j][k]
+                count += 1  
+        weights[i][j] = round(total / count, 2) if count > 0 else 0
+
+# Test code
+if __name__ == '__main__':
+    # print("Action weights:")
+    # for action_name in Action.__members__:
+    #     action_enum_member = Action[action_name]
+    #     print(f"{action_name}: {action_weights[action_enum_member.value]}")
+
+    # print(f"\nAction weights for leveling: {action_weights[Action.LEVEL.value]}")
+
+    # print("Gamer type weights:")
+    # for gamer_type_name in GamerType.__members__:
+    #     gamer_type_enum_member = GamerType[gamer_type_name]
+    #     print(f"{gamer_type_name}: {gamer_type_weights[gamer_type_enum_member.value]}")
+
+    # print(f"\nGamer type weights for Acrobat: {gamer_type_weights[GamerType.Acrobat.value]}")
+
+    # Print reward weight matrix for actions by gamer type
+    max_action_name_length = max(len(action_name) for action_name in Action.__members__)
+    for i in range(len(Action)):
+        padded_action_name = Action(i).name.ljust(max_action_name_length)
+        formatted_weights = [f"{weight:5.2f}" for weight in weights[i]]
+        weights_str = " ".join(formatted_weights)
+        print(f"{padded_action_name} {weights_str}")
