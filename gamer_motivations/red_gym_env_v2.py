@@ -144,11 +144,12 @@ class RedGymEnv(Env):
         self.base_explore = 0
         self.max_opponent_level = 0
         self.max_event_rew = 0
-        self.max_level_rew = 0
         self.last_health = 1
         self.total_healing_rew = 0
         self.died_count = 0
         self.party_size = 0
+        self.pokedex_seen = 0
+        self.pokedex_own = 0
         self.step_count = 0
 
         self.base_event_flags = sum([
@@ -216,6 +217,8 @@ class RedGymEnv(Env):
         self.update_explore_map()
 
         self.update_heal_reward()
+
+        self.update_pokedex()
 
         self.party_size = self.read_m(0xD163)
 
@@ -532,6 +535,8 @@ class RedGymEnv(Env):
             "equal_level": self.reward_scale * self.get_equal_level_reward(),
             "fully_heal": self.reward_scale * self.get_fully_heal_reward(),
             "heal": self.reward_scale * self.total_healing_rew * 30,
+            "pokedex_seen": self.reward_scale * self.get_pokedex_seen_reward,
+            "pokedex_own": self.reward_scale * self.get_pokedex_own_reward,
             #"op_lvl": self.reward_scale * self.update_max_op_level() * 0.2,
             "dead": self.reward_scale * self.died_count * -0.1,
             "badge": self.reward_scale * self.get_badges() * 10,
@@ -582,6 +587,16 @@ class RedGymEnv(Env):
 
     def read_hp(self, start):
         return 256 * self.read_m(start) + self.read_m(start + 1)
+    
+    def update_pokedex(self):
+        self.pokedex_seen = sum([self.bit_count(self.read_m(addr)) for addr in range(0xD30A, 0xD31D)])
+        self.pokedex_own = sum([self.bit_count(self.read_m(addr)) for addr in range(0xD2F7, 0xD30A)])
+    
+    def get_pokedex_seen_reward(self):
+        return self.pokedex_seen * reward_weights[Action.POKEDEX_SEEN.value][GamerType[self.gamer_type].value]
+    
+    def get_pokedex_own_reward(self):
+        return self.pokedex_own * reward_weights[Action.POKEDEX_OWN.value][GamerType[self.gamer_type].value]
 
     # built-in since python 3.10
     def bit_count(self, bits):

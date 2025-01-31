@@ -24,7 +24,7 @@ def make_env(rank, env_conf, seed=0):
             stream_metadata = { # All of this is part is optional
                 "user": "Acrobat", # choose your own username
                 "env_id": rank, # environment identifier
-                "color": "#447799", # choose your color :)
+                "color": "#FFC0CB", # choose your color :)
                 "extra": "", # any extra text you put here will be displayed
             }
         )
