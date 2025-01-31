@@ -39,7 +39,9 @@ class RedGymEnv(Env):
         self.reward_scale = (
             1 if "reward_scale" not in config else config["reward_scale"]
         )
-        self.gamer_type = config["gamer_type"]
+        self.gamer_type = (
+            "Acrobat" if "gamer_type" not in config else config["gamer_type"]
+        )
         self.instance_id = (
             str(uuid.uuid4())[:8]
             if "instance_id" not in config
