@@ -482,9 +482,19 @@ class RedGymEnv(Env):
         ]
         return max(sum(poke_levels) - starter_additional_levels, 0)
 
-    def get_levels_reward(self):
+    def get_level_reward(self):
         level_sum = self.get_levels_sum()
         return level_sum * reward_weights[Action.LEVEL.value][GamerType[self.gamer_type].value]
+    
+    # reward applies if difference between highest and lowest level <= level_threshold
+    def get_equal_level_reward(self):
+        level_threshold = 5
+        levels = [self.read_m(a) for a in [0xD18C, 0xD1B8, 0xD1E4, 0xD210, 0xD23C, 0xD268]]
+        party_levels = [level for level in levels if level > 0]
+        if max(party_levels) - min(party_levels) <= level_threshold:
+            return reward_weights[Action.EQUAL_LEVEL.value][GamerType[self.gamer_type].value]
+        else:
+            return 0
 
     def get_badges(self):
         return self.bit_count(self.read_m(0xD356))
@@ -512,7 +522,8 @@ class RedGymEnv(Env):
         # https://github.com/pret/pokered/blob/91dc3c9f9c8fd529bb6e8307b58b96efa0bec67e/constants/event_constants.asm
         state_scores = {
             "event": self.reward_scale * self.update_max_event_rew() * 4,
-            "level": self.reward_scale * self.get_levels_reward(),
+            "level": self.reward_scale * self.get_level_reward(),
+            "equal_level": self.reward_scale * self.get_equal_level_reward(),
             "heal": self.reward_scale * self.total_healing_rew * 30,
             #"op_lvl": self.reward_scale * self.update_max_op_level() * 0.2,
             "dead": self.reward_scale * self.died_count * -0.1,
