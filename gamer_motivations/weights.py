@@ -37,18 +37,18 @@ Action, action_weights = load_weights_from_csv("action_weights.csv", "Action")
 GamerType, gamer_type_weights = load_weights_from_csv("gamer_type_weights.csv", "GamerType")
 
 # Reward weights for each action by gamer type
-weights = [[0] * len(GamerType) for _ in range(len(Action))]
+reward_weights = [[0] * len(GamerType) for _ in range(len(Action))]
 
 # Calculate weights using weighted average
-for i in range(len(weights)):
-    for j in range(len(weights[i])):
+for i in range(len(reward_weights)):
+    for j in range(len(reward_weights[i])):
         total = 0
         count = 0
         for k in range(12):
             if (action_weights[i][k] != 0):
                 total += action_weights[i][k] * gamer_type_weights[j][k]
                 count += 1  
-        weights[i][j] = round(total / count, 2) if count > 0 else 0
+        reward_weights[i][j] = round(total / count, 2) if count > 0 else 0
 
 # Test code
 if __name__ == '__main__':
@@ -70,6 +70,6 @@ if __name__ == '__main__':
     max_action_name_length = max(len(action_name) for action_name in Action.__members__)
     for i in range(len(Action)):
         padded_action_name = Action(i).name.ljust(max_action_name_length)
-        formatted_weights = [f"{weight:5.2f}" for weight in weights[i]]
+        formatted_weights = [f"{weight:5.2f}" for weight in reward_weights[i]]
         weights_str = " ".join(formatted_weights)
         print(f"{padded_action_name} {weights_str}")

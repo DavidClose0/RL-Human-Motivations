@@ -14,6 +14,7 @@ from gymnasium import Env, spaces
 from pyboy.utils import WindowEvent
 
 from global_map import local_to_global, GLOBAL_MAP_SHAPE
+
 from weights import *
 
 event_flags_start = 0xD747
@@ -38,6 +39,7 @@ class RedGymEnv(Env):
         self.reward_scale = (
             1 if "reward_scale" not in config else config["reward_scale"]
         )
+        self.gamer_type = config["gamer_type"]
         self.instance_id = (
             str(uuid.uuid4())[:8]
             if "instance_id" not in config
@@ -481,15 +483,8 @@ class RedGymEnv(Env):
         return max(sum(poke_levels) - starter_additional_levels, 0)
 
     def get_levels_reward(self):
-        explore_thresh = 22
-        scale_factor = 4
         level_sum = self.get_levels_sum()
-        if level_sum < explore_thresh:
-            scaled = level_sum
-        else:
-            scaled = (level_sum - explore_thresh) / scale_factor + explore_thresh
-        self.max_level_rew = max(self.max_level_rew, scaled)
-        return self.max_level_rew
+        return level_sum * reward_weights[Action.LEVEL.value][GamerType[self.gamer_type].value]
 
     def get_badges(self):
         return self.bit_count(self.read_m(0xD356))
@@ -512,7 +507,7 @@ class RedGymEnv(Env):
             0,
         )
 
-    def get_game_state_reward(self, print_stats=False):
+    def get_game_state_reward(self, print_stats=True):
         # addresses from https://datacrystal.romhacking.net/wiki/Pok%C3%A9mon_Red/Blue:RAM_map
         # https://github.com/pret/pokered/blob/91dc3c9f9c8fd529bb6e8307b58b96efa0bec67e/constants/event_constants.asm
         state_scores = {
