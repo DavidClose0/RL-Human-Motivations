@@ -22,7 +22,7 @@ def make_env(rank, env_conf, seed=0):
         env = StreamWrapper(
             RedGymEnv(env_conf), 
             stream_metadata = { # All of this is part is optional
-                "user": "v2-default", # choose your own username
+                "user": "Acrobat", # choose your own username
                 "env_id": rank, # environment identifier
                 "color": "#447799", # choose your color :)
                 "extra": "", # any extra text you put here will be displayed

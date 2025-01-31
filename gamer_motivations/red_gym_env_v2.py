@@ -495,6 +495,12 @@ class RedGymEnv(Env):
             return reward_weights[Action.EQUAL_LEVEL.value][GamerType[self.gamer_type].value]
         else:
             return 0
+        
+    def get_fully_heal_reward(self):
+        if self.read_hp_fraction() == 1:
+            return reward_weights[Action.FULLY_HEAL.value][GamerType[self.gamer_type].value]
+        else:
+            return 0
 
     def get_badges(self):
         return self.bit_count(self.read_m(0xD356))
@@ -524,6 +530,7 @@ class RedGymEnv(Env):
             "event": self.reward_scale * self.update_max_event_rew() * 4,
             "level": self.reward_scale * self.get_level_reward(),
             "equal_level": self.reward_scale * self.get_equal_level_reward(),
+            "fully_heal": self.reward_scale * self.get_fully_heal_reward(),
             "heal": self.reward_scale * self.total_healing_rew * 30,
             #"op_lvl": self.reward_scale * self.update_max_op_level() * 0.2,
             "dead": self.reward_scale * self.died_count * -0.1,
