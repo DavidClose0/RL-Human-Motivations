@@ -123,7 +123,7 @@ class RedGymEnv(Env):
         #self.screen = self.pyboy.botsupport_manager().screen()
 
         if not config["headless"]:
-            self.pyboy.set_emulation_speed(6)
+            self.pyboy.set_emulation_speed(1)
 
     def reset(self, seed=None, options={}):
         self.seed = seed
@@ -490,6 +490,14 @@ class RedGymEnv(Env):
     def get_level_reward(self):
         level_sum = self.get_levels_sum()
         return level_sum * reward_weights[Action.LEVEL.value][GamerType[self.gamer_type].value]
+
+    def get_overlevel_reward(self):
+        # highest level pokemon for each gym leader and champion, respectively
+        thresholds = [14, 21, 24, 29, 43, 43, 47, 50, 65]
+        levels = [self.read_m(a) for a in [0xD18C, 0xD1B8, 0xD1E4, 0xD210, 0xD23C, 0xD268]]
+        badges = self.get_badges()
+        reward = sum([l - thresholds[badges] for l in levels if l > thresholds[badges]])
+        return reward * reward_weights[Action.OVERLEVEL.value][GamerType[self.gamer_type].value]
     
     # reward applies if difference between highest and lowest level <= level_threshold
     def get_equal_level_reward(self):
@@ -534,6 +542,7 @@ class RedGymEnv(Env):
         state_scores = {
             "event": self.reward_scale * self.update_max_event_rew() * 4,
             "level": self.reward_scale * self.get_level_reward(),
+            "overlevel": self.reward_scale * self.get_overlevel_reward(),
             "equal_level": self.reward_scale * self.get_equal_level_reward(),
             "fully_heal": self.reward_scale * self.get_fully_heal_reward(),
             "heal": self.reward_scale * self.total_healing_rew * 30,

@@ -51,7 +51,7 @@ if __name__ == '__main__':
     env_config = {
                 'headless': False, 'save_final_state': True, 'early_stop': False,
                 'action_freq': 24, 'init_state': '../has_pokedex_nballs.state', 'max_steps': ep_length, 
-                'print_rewards': True, 'save_video': False, 'fast_video': True, 'session_path': sess_path,
+                'print_rewards': True, 'save_video': True, 'fast_video': True, 'session_path': sess_path,
                 'gb_path': '../PokemonRed.gb', 'debug': False, 'sim_frame_dist': 2_000_000.0, 'extra_buttons': False
             }
     
@@ -65,7 +65,7 @@ if __name__ == '__main__':
         print(f"using checkpoint: {file_name}, which is {time_since} hours old")
     
     # could optionally manually specify a checkpoint here
-    #file_name = "runs/poke_41943040_steps.zip"
+    file_name = "runs/acrobat_89128960_steps.zip"
     print('\nloading checkpoint')
     model = PPO.load(file_name, env=env, custom_objects={'lr_schedule': 0, 'clip_range': 0})
         
