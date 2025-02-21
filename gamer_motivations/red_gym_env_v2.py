@@ -66,7 +66,7 @@ class RedGymEnv(Env):
         self.wild_caught = 0
         self.wild_ran = 0
         self.battles_won_fast = 0
-        self.own_fainted = 0
+        self.own_faint = 0
         self.gt_defeated = 0
         self.tr_defeated = 0
         self.r_defeated = 0
@@ -177,7 +177,7 @@ class RedGymEnv(Env):
         self.wild_caught = 0
         self.wild_ran = 0
         self.battles_won_fast = 0
-        self.own_fainted = 0
+        self.own_faint = 0
         self.gt_defeated = 0
         self.tr_defeated = 0
         self.r_defeated = 0
@@ -189,6 +189,7 @@ class RedGymEnv(Env):
         self.sl_used = 0
         self.effects_used = 0
         self.locations_seen = np.zeros((32,), dtype=np.uint8)
+        self.party_health = [0, 0, 0, 0, 0, 0]
         self.step_count = 0
 
         self.base_event_flags = sum([
@@ -260,6 +261,8 @@ class RedGymEnv(Env):
         self.update_pokedex()
 
         self.update_locations_seen()
+
+        self.update_party_health()
 
         self.update_battle()
 
@@ -566,6 +569,9 @@ class RedGymEnv(Env):
         location_count = sum([self.bit_count(byte) for byte in self.locations_seen])
         return location_count * reward_weights[Action.DISCOVER_NEW_LOCATION.value][GamerType[self.gamer_type].value]
     
+    def get_own_faint_reward(self):
+        return self.own_faint * reward_weights[Action.OWN_FAINT.value][GamerType[self.gamer_type].value]
+    
     def get_trainers_defeated_reward(self):
         return self.trainers_defeated * reward_weights[Action.DEFEAT_TRAINER.value][GamerType[self.gamer_type].value]
 
@@ -603,6 +609,7 @@ class RedGymEnv(Env):
             "pokedex_seen": self.reward_scale * self.get_pokedex_seen_reward(),
             "pokedex_own": self.reward_scale * self.get_pokedex_own_reward(),
             "locations_seen": self.reward_scale * self.get_locations_seen_reward(),
+            "own_faint": self.reward_scale * self.get_own_faint_reward(),   
             "trainers_defeated": self.reward_scale * self.get_trainers_defeated_reward(),
             #"op_lvl": self.reward_scale * self.update_max_op_level() * 0.2,
             "dead": self.reward_scale * self.died_count * -0.1,
@@ -664,6 +671,16 @@ class RedGymEnv(Env):
         byte_index = location_id // 8
         bit_index = location_id % 8
         self.locations_seen[byte_index] |= 1 << bit_index
+
+    def update_party_health(self):
+        new_party_health = [
+            self.read_hp(add)
+            for add in [0xD16C, 0xD198, 0xD1C4, 0xD1F0, 0xD21C, 0xD248]
+        ]
+        for i in range(6):
+            # if health dropped to 0 and party size did not change
+            if self.party_health[i] > 0 and new_party_health[i] == 0 and self.read_m(0xD163) == self.party_size:
+                self.own_faint += 1
 
     def update_battle(self):
         new_battle_type = self.read_m(0xD057)
