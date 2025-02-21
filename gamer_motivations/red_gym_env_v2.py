@@ -60,6 +60,25 @@ class RedGymEnv(Env):
             ])
         }
 
+        self.in_battle = False
+        self.battle_type = 0
+        self.wild_fainted = 0
+        self.wild_caught = 0
+        self.wild_ran = 0
+        self.battles_won_fast = 0
+        self.own_fainted = 0
+        self.gt_defeated = 0
+        self.tr_defeated = 0
+        self.r_defeated = 0
+        self.trainers_defeated = 0
+        self.se_used = 0
+        self.hrhr_used = 0
+        self.ghp_used = 0
+        self.sb_used = 0
+        self.sl_used = 0
+        self.effects_used = 0
+        self.locations_seen = np.zeros((32,), dtype=np.uint8)
+
         # Set this in SOME subclasses
         self.metadata = {"render.modes": []}
         self.reward_range = (0, 15000)
@@ -152,6 +171,24 @@ class RedGymEnv(Env):
         self.party_size = 0
         self.pokedex_seen = 0
         self.pokedex_own = 0
+        self.in_battle = False
+        self.battle_type = 0
+        self.wild_fainted = 0
+        self.wild_caught = 0
+        self.wild_ran = 0
+        self.battles_won_fast = 0
+        self.own_fainted = 0
+        self.gt_defeated = 0
+        self.tr_defeated = 0
+        self.r_defeated = 0
+        self.trainers_defeated = 0
+        self.se_used = 0
+        self.hrhr_used = 0
+        self.ghp_used = 0
+        self.sb_used = 0
+        self.sl_used = 0
+        self.effects_used = 0
+        self.locations_seen = np.zeros((32,), dtype=np.uint8)
         self.step_count = 0
 
         self.base_event_flags = sum([
@@ -221,6 +258,10 @@ class RedGymEnv(Env):
         self.update_heal_reward()
 
         self.update_pokedex()
+
+        self.update_locations_seen()
+
+        self.update_battle()
 
         self.party_size = self.read_m(0xD163)
 
@@ -514,6 +555,19 @@ class RedGymEnv(Env):
             return reward_weights[Action.FULLY_HEAL.value][GamerType[self.gamer_type].value]
         else:
             return 0
+    
+    def get_pokedex_seen_reward(self):
+        return self.pokedex_seen * reward_weights[Action.POKEDEX_SEEN.value][GamerType[self.gamer_type].value]
+    
+    def get_pokedex_own_reward(self):
+        return self.pokedex_own * reward_weights[Action.POKEDEX_OWN.value][GamerType[self.gamer_type].value]
+    
+    def get_locations_seen_reward(self):
+        location_count = sum([self.bit_count(byte) for byte in self.locations_seen])
+        return location_count * reward_weights[Action.DISCOVER_NEW_LOCATION.value][GamerType[self.gamer_type].value]
+    
+    def get_trainers_defeated_reward(self):
+        return self.trainers_defeated * reward_weights[Action.DEFEAT_TRAINER.value][GamerType[self.gamer_type].value]
 
     def get_badges(self):
         return self.bit_count(self.read_m(0xD356))
@@ -548,6 +602,8 @@ class RedGymEnv(Env):
             "heal": self.reward_scale * self.total_healing_rew * 30,
             "pokedex_seen": self.reward_scale * self.get_pokedex_seen_reward(),
             "pokedex_own": self.reward_scale * self.get_pokedex_own_reward(),
+            "locations_seen": self.reward_scale * self.get_locations_seen_reward(),
+            "trainers_defeated": self.reward_scale * self.get_trainers_defeated_reward(),
             #"op_lvl": self.reward_scale * self.update_max_op_level() * 0.2,
             "dead": self.reward_scale * self.died_count * -0.1,
             "badge": self.reward_scale * self.get_badges() * 10,
@@ -602,12 +658,31 @@ class RedGymEnv(Env):
     def update_pokedex(self):
         self.pokedex_seen = sum([self.bit_count(self.read_m(addr)) for addr in range(0xD30A, 0xD31D)])
         self.pokedex_own = sum([self.bit_count(self.read_m(addr)) for addr in range(0xD2F7, 0xD30A)])
-    
-    def get_pokedex_seen_reward(self):
-        return self.pokedex_seen * reward_weights[Action.POKEDEX_SEEN.value][GamerType[self.gamer_type].value]
-    
-    def get_pokedex_own_reward(self):
-        return self.pokedex_own * reward_weights[Action.POKEDEX_OWN.value][GamerType[self.gamer_type].value]
+
+    def update_locations_seen(self):
+        location_id = self.read_m(0xD35E)
+        byte_index = location_id // 8
+        bit_index = location_id % 8
+        self.locations_seen[byte_index] |= 1 << bit_index
+
+    def update_battle(self):
+        new_battle_type = self.read_m(0xD057)
+        if self.in_battle:
+            # currently in trainer battle
+            if self.battle_type == 0x02:
+                # defeated trainer
+                if new_battle_type == 0x00:
+                    self.in_battle = False
+                    self.trainers_defeated += 1
+                # blacked out
+                elif new_battle_type == 0xFF:
+                    self.in_battle = False
+        else:
+            # new battle initiated
+            if new_battle_type != 0x00 and new_battle_type != 0xFF:
+                self.in_battle = True
+        # update battle type
+        self.battle_type = new_battle_type
 
     # built-in since python 3.10
     def bit_count(self, bits):
