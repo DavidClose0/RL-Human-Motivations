@@ -334,6 +334,11 @@ class RedGymEnv(Env):
                 "badge": self.get_badges(),
                 "event": self.progress_reward["event"],
                 "healr": self.total_healing_rew,
+                "pokedex_seen": self.pokedex_seen,
+                "pokedex_own": self.pokedex_own,
+                "locations_seen": self.locations_seen,
+                "own_faint": self.own_faint,
+                "trainers_defeated": self.trainers_defeated,
             }
         )
 
