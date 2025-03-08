@@ -4,6 +4,7 @@ from pathlib import Path
 import uuid
 import time
 import glob
+import sys
 from red_gym_env_v2 import RedGymEnv
 from stable_baselines3 import A2C, PPO
 from stable_baselines3.common import env_checker
@@ -59,14 +60,17 @@ if __name__ == '__main__':
     env = make_env(0, env_config)() #SubprocVecEnv([make_env(i, env_config) for i in range(num_cpu)])
     
     #env_checker.check_env(env)
-    most_recent_checkpoint, time_since = get_most_recent_zip_with_age("runs")
-    if most_recent_checkpoint is not None:
-        file_name = most_recent_checkpoint
-        print(f"using checkpoint: {file_name}, which is {time_since} hours old")
-    
-    # could optionally manually specify a checkpoint here
-    file_name = "runs/acrobat_89128960_steps.zip"
-    print('\nloading checkpoint')
+
+    # Check if filename is passed as a command line argument
+    if len(sys.argv) > 1:
+        file_name = sys.argv[1]
+    else:
+        most_recent_checkpoint, time_since = get_most_recent_zip_with_age("runs")
+        if most_recent_checkpoint is not None:
+            file_name = most_recent_checkpoint
+            print(f"using checkpoint: {file_name}, which is {time_since} hours old")
+        
+    print(f"\nloading checkpoint: {file_name}")
     model = PPO.load(file_name, env=env, custom_objects={'lr_schedule': 0, 'clip_range': 0})
         
     #keyboard.on_press_key("M", toggle_agent)
